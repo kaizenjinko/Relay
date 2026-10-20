@@ -1,4 +1,4 @@
-package main
+package e2e
 
 import (
 	"bufio"
@@ -16,11 +16,12 @@ import (
 )
 
 // buildBinary compiles the relay once for the process-level tests. These tests
-// exercise the real signal path, which cannot be covered in-process.
+// exercise the real signal path, which cannot be covered in-process, so they
+// live outside the package and drive the compiled binary.
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "relay")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd := exec.Command("go", "build", "-o", bin, "github.com/baongo/relay")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
