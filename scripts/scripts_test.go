@@ -1,4 +1,4 @@
-package main
+package scripts_test
 
 import (
 	"encoding/json"
@@ -26,7 +26,7 @@ type luaScript struct {
 // compileScripts loads every scripts/**/*.lua that is a real route script.
 func compileScripts(t *testing.T) []luaScript {
 	t.Helper()
-	root := "scripts"
+	root := "."
 	var files []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -551,7 +551,7 @@ func TestOpenRouterAddsHeadersKeepsBody(t *testing.T) {
 // replaced by `epilogue`, so the helpers can be exercised without `require`.
 func spliceSource(t *testing.T, epilogue string) string {
 	t.Helper()
-	src, err := os.ReadFile(filepath.Join("scripts", "lib", "splice.lua"))
+	src, err := os.ReadFile(filepath.Join("lib", "splice.lua"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +587,7 @@ func probeSplice(t *testing.T, expr, body string) string {
 func TestSpliceHelpers(t *testing.T) {
 	// lib/splice.lua is a passthrough route: it must run clean and change
 	// nothing.
-	src, err := os.ReadFile(filepath.Join("scripts", "lib", "splice.lua"))
+	src, err := os.ReadFile(filepath.Join("lib", "splice.lua"))
 	if err != nil {
 		t.Fatal(err)
 	}
