@@ -149,8 +149,9 @@ account với `headers`/`meta` riêng).
 Rule khớp theo `status`, `header_match` (regex), `body_regex`. Rule đầu tiên
 khớp thắng; `abort = true` dừng ngay không thử credential khác.
 
-`sticky_by` được parse nhưng **chưa implement** — pick quyết định hoàn toàn bởi
-`strategy`.
+Pick quyết định hoàn toàn bởi `strategy`; không có ghim theo conversation.
+`sticky_by` đã bị xoá khỏi schema: một key không có tác dụng tệ hơn không có
+key, vì người khai báo sẽ tin nhầm rằng nó đang chạy.
 
 ## Script có sẵn
 

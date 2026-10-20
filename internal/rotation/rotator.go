@@ -1,7 +1,6 @@
 package rotation
 
 import (
-	"strconv"
 	"time"
 )
 
@@ -207,13 +206,3 @@ func (r *Rotator) markSuccess(cred *Credential) {
 }
 
 // stateOf formats a credential's health as a short token for logging.
-func (r *Rotator) stateOf(cred *Credential) string {
-	h, ok := r.pool.healthOf(cred.ID)
-	if !ok {
-		return "unknown"
-	}
-	if h.state == cooling {
-		return "cooling(" + strconv.FormatInt(int64(h.until.Sub(r.now()).Round(time.Second)/time.Second), 10) + "s)"
-	}
-	return h.state.String()
-}

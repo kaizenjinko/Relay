@@ -17,8 +17,7 @@ import (
 // Credential is one identity that can be attached to a request.
 //
 // Headers are applied over the route headers and win on conflict. Meta is
-// carried for logging and future sticky routing; nothing in this package
-// interprets it.
+// opaque metadata carried from the source, for logging.
 type Credential struct {
 	ID      string
 	Headers map[string]string
@@ -66,10 +65,7 @@ type Config struct {
 	BackoffMult   float64
 	FailThreshold int
 	ResetAfter    time.Duration
-	// StickyBy is parsed and carried but not implemented: picking is decided
-	// per attempt by Strategy alone. See README-level note in the phase report.
-	StickyBy string
-	Rules    []*config.Rule
+	Rules         []*config.Rule
 }
 
 // DefaultConfig mirrors the defaults applied by config.validate, for callers
@@ -149,9 +145,6 @@ func NewWithConfig(cfg *config.Rotation, defaults Config) (*Rotator, error) {
 		return nil, err
 	}
 	rc.Rules = nil
-	if cfg.StickyBy != "" {
-		rc.StickyBy = cfg.StickyBy
-	}
 
 	creds, err := loadSources(cfg.Source)
 	if err != nil {
@@ -251,17 +244,4 @@ func renderTemplate(tpl map[string]string, key string) map[string]string {
 		out[name] = strings.ReplaceAll(v, "{key}", key)
 	}
 	return out
-}
-
-// reload re-lists every source and swaps the pool contents. Exposed for a
-// future SIGHUP path; nothing in the server calls it yet.
-func (r *Rotator) reload(sources []*config.RotSource) error {
-	creds, err := loadSources(sources)
-	if err != nil {
-		return err
-	}
-	if len(creds) == 0 {
-		return fmt.Errorf("rotation: reload produced no credentials")
-	}
-	return r.pool.replace(creds)
 }

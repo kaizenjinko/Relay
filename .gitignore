@@ -16,3 +16,9 @@ relay.env
 .idea/
 *.swp
 .DS_Store
+.gitnexus
+
+# GitNexus indexer artefacts (npx gitnexus analyze)
+AGENTS.md
+CLAUDE.md
+.claude/

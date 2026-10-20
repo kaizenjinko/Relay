@@ -208,3 +208,44 @@ func TestMetricsLabelUsesObservedStream(t *testing.T) {
 		t.Fatalf("SSE response labelled as non-stream:\n%s", mctx.Response.Body())
 	}
 }
+
+// Close must release the Lua VM pools, not just the HTTP client pool. A relay
+// that loads routes, runs traffic and shuts down should not leave VMs behind.
+func TestCloseReleasesScriptVMs(t *testing.T) {
+	upURL, closeUp := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	})
+	defer closeUp()
+
+	srv, _ := newTestRelay(t, relayTOML("/p", upURL, "s.lua"), map[string]string{"s.lua": `return nil`})
+
+	// Populate the pool so closeAll has something to free.
+	for i := 0; i < 3; i++ {
+		if res := doReq(t, srv, testRequest{Method: "POST", Path: "/p/x", Body: `{}`}); res.Status != 200 {
+			t.Fatalf("warm-up request failed: %d", res.Status)
+		}
+	}
+	srv.Close()
+
+	// A second Close on the same server must not panic (double-free of VMs).
+	srv.Close()
+}
+
+// Two routes sharing one script file must free the VM pool exactly once.
+func TestCloseDeduplicatesSharedScript(t *testing.T) {
+	upURL, closeUp := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	})
+	defer closeUp()
+
+	cfgTOML := relayTOML("/a", upURL, "s.lua") +
+		"\n[[route]]\nprefix = \"/b\"\nupstream = " + tomlQuote(upURL) +
+		"\nscript = \"s.lua\"\ntimeout = \"5s\"\n"
+	srv, _ := newTestRelay(t, cfgTOML, map[string]string{"s.lua": `return nil`})
+
+	doReq(t, srv, testRequest{Method: "POST", Path: "/a/x", Body: `{}`})
+	doReq(t, srv, testRequest{Method: "POST", Path: "/b/x", Body: `{}`})
+	srv.Close()
+}

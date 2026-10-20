@@ -98,10 +98,7 @@ type Rotation struct {
 	BackoffMult   float64      `toml:"backoff_mult"`
 	FailThreshold int          `toml:"fail_threshold"`
 	ResetAfter    string       `toml:"reset_after"`
-	// StickyBy is accepted and validated but not implemented: it parses and
-	// boots, and the rotator reports it as unavailable on /routes.
-	StickyBy string  `toml:"sticky_by"`
-	Failure  Failure `toml:"failure"`
+	Failure       Failure      `toml:"failure"`
 }
 
 // RotSource is one credential source.

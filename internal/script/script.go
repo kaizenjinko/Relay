@@ -254,23 +254,7 @@ func (s *Script) RunRequest(req *Request, params map[string]any) (*Result, error
 	return res, err
 }
 
-// paramsToLua converts the params map only when its contents differ from the
-// previously converted one for this VM. A route's params never change, so
-// after the first request this is a shallow comparison instead of a table
-// rebuild.
-//
-// The previous map is compared by identity through a small side map kept in
-// the VM's registry-free pool entry; see vmParams in pool.go.
-func paramsToLua(L *lua.LState, params map[string]any) lua.LValue {
-	// An empty table, never nil: scripts index params freely, and a route
-	// without [route.params] must behave exactly like one with an empty block.
-	if params == nil {
-		return L.NewTable()
-	}
-	return goToLua(L, params)
-}
-
-// paramsToLuaInto is paramsToLua writing into a reusable table. Nested values
+// paramsToLuaInto converts the params map into a reusable table. Nested values
 // still allocate; the common case (flat scalars) does not.
 func paramsToLuaInto(L *lua.LState, params map[string]any, t *lua.LTable) lua.LValue {
 	clearTable(t)
@@ -297,10 +281,6 @@ func (s *Script) RunResponse(resp *Response, params map[string]any) (*Result, er
 	return res, err
 }
 
-func reqTable(L *lua.LState, r *Request) *lua.LTable {
-	return reqTableReuse(L, r, L.NewTable())
-}
-
 // reqTableReuse fills t from r. Reusing a table across requests matters:
 // gopher-lua's NewTable allocates its array and hash parts up front (~590ns,
 // 3 allocs, 2.8KB for an empty table), so rebuilding req/params on every
@@ -312,10 +292,6 @@ func reqTableReuse(L *lua.LState, r *Request, t *lua.LTable) *lua.LTable {
 	t.RawSetString("path", lua.LString(r.Path))
 	t.RawSetString("headers", goToLua(L, r.Headers))
 	return t
-}
-
-func respTable(L *lua.LState, r *Response) *lua.LTable {
-	return respTableReuse(L, r, L.NewTable())
 }
 
 func respTableReuse(L *lua.LState, r *Response, t *lua.LTable) *lua.LTable {

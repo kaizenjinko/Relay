@@ -96,7 +96,8 @@ func (p *vmPool) put(v *vm, reusable bool) {
 	p.mu.Unlock()
 }
 
-// closeAll drops every pooled VM, releasing its memory.
+// closeAll drops every pooled VM, releasing its memory. Called from
+// Script.Close when a route is torn down.
 func (p *vmPool) closeAll() {
 	p.mu.Lock()
 	defer p.mu.Unlock()

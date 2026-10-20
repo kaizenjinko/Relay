@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"fmt"
-	"io"
 	"net"
 	"net/url"
 	"runtime/debug"
@@ -25,7 +24,6 @@ import (
 type Server struct {
 	routes     []*compiledRoute
 	verbose    bool
-	maxConns   int
 	clients    *clientPool
 	log        *obs.Logger
 	metrics    *obs.Metrics
@@ -40,7 +38,6 @@ type compiledRoute struct {
 	headers  *headerSet
 	upstream *upstream
 	timeout  time.Duration
-	isSSE    bool
 	forceSSE *bool
 	params   map[string]any
 	// rotator is nil when the route has no [route.rotation] block. A nil
@@ -98,7 +95,6 @@ func NewWithObservability(cfg *config.Config, scripts map[string]*script.Script,
 	}
 	s := &Server{
 		verbose:    cfg.Server.Verbose,
-		maxConns:   cfg.Server.MaxConns,
 		clients:    newClientPool(cfg.Server.MaxConns),
 		log:        logger,
 		metrics:    metrics,
@@ -294,9 +290,6 @@ func (s *Server) serveRoutes(ctx *fasthttp.RequestCtx) {
 		if r.rotator != nil {
 			c := r.rotator.Config()
 			fmt.Fprintf(&b, " rotation=%s creds=%d attempts=%d", c.Strategy, len(r.rotator.Credentials()), c.MaxAttempts)
-			if c.StickyBy != "" {
-				fmt.Fprint(&b, " sticky=unimplemented")
-			}
 		}
 		b.WriteByte('\n')
 	}
@@ -532,8 +525,20 @@ func (s *Server) serveBuffered(ctx *fasthttp.RequestCtx, r *compiledRoute, resp 
 	ctx.SetBody(payload)
 }
 
-// Close releases idle upstream connections. Safe to call once at shutdown.
-func (s *Server) Close() { s.clients.Close() }
+// Close releases idle upstream connections and the Lua VM pools held by every
+// route. Without the script teardown a long-lived process that reloads routes
+// would leak one VM pool per route per generation.
+func (s *Server) Close() {
+	s.clients.Close()
+	seen := make(map[*script.Script]bool, len(s.routes))
+	for _, r := range s.routes {
+		if r.script == nil || seen[r.script] {
+			continue
+		}
+		seen[r.script] = true
+		r.script.Close()
+	}
+}
 
 func (s *Server) logf(format string, args ...any) {
 	s.log.Info(fmt.Sprintf(format, args...))
@@ -555,5 +560,3 @@ func hopByHop(name string) bool {
 	}
 	return false
 }
-
-var _ io.Writer = (*bytes.Buffer)(nil)
