@@ -238,6 +238,9 @@ thay vì làm chết process.
 
 ## Tài liệu khác
 
+- `DEMO.md` — **tham chiếu cú pháp đầy đủ để viết script mới** (contract,
+  bốn bẫy, API, checklist). Đọc file này trước khi viết script.
+- `scripts/demo/` — sáu script mẫu chạy được, mỗi script minh hoạ một kỹ thuật
 - `PLAN.md` — kế hoạch và phạm vi
 - `PERF.md` — baseline, sau tối ưu, giải thích từng thay đổi
 - `FINDINGS.md` — bug phát hiện trong quá trình xây dựng và cách xử lý

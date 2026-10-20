@@ -222,6 +222,41 @@ var cases = map[string]scriptCase{
 		// Response-only: there is no request hook to exercise.
 		responseNoChange: []string{plainResponse, chunkResponse},
 	},
+
+	// ── scripts/demo: worked examples referenced by DEMO.md ──
+	"demo/defaults.lua": {
+		// Client already set both fields.
+		requestNoChange:  []string{`{"messages":[],"temperature":0.2,"max_tokens":100}`},
+		responseNoChange: []string{plainResponse, chunkResponse},
+	},
+	"demo/strip_key.lua": {
+		// No tool_choice to drop.
+		requestNoChange:  []string{simpleRequest},
+		responseNoChange: []string{plainResponse},
+	},
+	"demo/finish_reason.lua": {
+		requestNoChange: []string{simpleRequest},
+		// Neither shape carries the "from" value.
+		responseNoChange: []string{plainResponse, chunkResponse},
+	},
+	"demo/tool_prefix.lua": {
+		// Already prefixed with up_; prefixing again would corrupt the name.
+		requestNoChange: []string{
+			`{"tools":[{"type":"function","function":{"name":"up_bash"}}]}`,
+		},
+		// No tool names to strip.
+		responseNoChange: []string{plainResponse, chunkResponse},
+	},
+	"demo/headers_only.lua": {
+		// Always adds a header, so there is no no-change request body.
+		requestNoChange:  []string{},
+		responseNoChange: []string{plainResponse},
+	},
+	"demo/signed.lua": {
+		// Without X-Sign-Key the script must leave the body alone.
+		requestNoChange:  []string{simpleRequest},
+		responseNoChange: []string{plainResponse},
+	},
 }
 
 // ---------------------------------------------------------------------------
