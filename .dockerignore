@@ -1,5 +1,21 @@
 .git
-*.md
+.gitnexus
+.claude
 /tmp
-deploy
-scripts/*.lua.bak
+
+# Docs and tests are not part of the image.
+*.md
+test/
+
+# Credentials must never enter a build layer, even accidentally: a layer is
+# readable by anyone who can pull the image.
+relay.env
+*.env
+!*.env.example
+*-accounts.json
+
+# Editor and OS noise.
+.vscode/
+.idea/
+*.swp
+.DS_Store

@@ -1,0 +1,58 @@
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: relay:latest
+    container_name: relay
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:8787:8787"
+
+    # Credentials live here, never in relay.toml and never in this file. The
+    # file is optional (the ":?" form is not used) so a stack with no
+    # credential routes still starts; routes that read a missing variable send
+    # an empty header instead of failing to boot.
+    env_file:
+      - path: deploy/relay.env
+        required: false
+
+    volumes:
+      # script_dir in relay.toml is resolved relative to the config file's own
+      # directory, so the scripts must land beside it at the same relative
+      # path as in the image: /etc/relay/scripts.
+      #
+      # The container config uses plain http:// upstreams: the image carries no
+      # CA bundle, because TLS is the wrapper's job.
+      - ./deploy/relay.container.toml:/etc/relay/relay.toml:ro
+      - ./scripts/:/etc/relay/scripts/:ro
+
+    # Matches shutdown_timeout in relay.toml with headroom. Docker sends
+    # SIGTERM first; the relay drains in-flight SSE streams before exiting, and
+    # only gets SIGKILL after this grace period.
+    stop_grace_period: 45s
+
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/relay", "-healthcheck", "-listen", "127.0.0.1:8787"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+    # The relay is a reverse proxy: it needs nothing but a socket and its
+    # config. Everything below is read-only except a small tmpfs, so a
+    # compromised route script cannot persist anything.
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

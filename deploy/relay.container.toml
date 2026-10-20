@@ -1,0 +1,45 @@
+# relay.toml — container config
+#
+# This image has no CA bundle, so every upstream here must be plain http://.
+# Point them at the TLS-terminating wrapper; that wrapper owns certificates and
+# the relay only forwards. For https:// upstreams use deploy/relay.toml.example
+# with an image built with ca-certificates instead.
+#
+# Mounted at /etc/relay/relay.toml, so script_dir "scripts" resolves to
+# /etc/relay/scripts, which is where the image bakes the Lua files.
+
+[server]
+listen = "0.0.0.0:8787"
+
+max_conns = 512
+verbose = false
+
+read_timeout     = "30s"
+shutdown_timeout = "30s"
+
+log_format = "json"
+
+metrics_path = "/metrics"
+
+script_dir = "scripts"
+
+# ── Example route ─────────────────────────────────────────────────────────
+# Replace the upstream with your wrapper's address on the compose network.
+# The hostname is resolved by Docker's embedded DNS, so a service named
+# "wrapper" is reachable as http://wrapper:8080.
+
+[[route]]
+name     = "opencode"
+prefix   = "/opencode"
+upstream = "http://wrapper:8080"
+script   = "opencode_free.lua"
+timeout  = "180s"
+
+  [route.headers.set]
+  User-Agent    = "opencode/1.19.3 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
+  Authorization = "Bearer public"
+
+  [route.headers.dynamic.x-opencode-session]
+  kind   = "hex"
+  prefix = "ses_"
+  bytes  = 13

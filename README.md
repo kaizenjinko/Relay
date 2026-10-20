@@ -201,16 +201,46 @@ sudo systemctl daemon-reload && sudo systemctl enable --now relay
 ### Docker
 
 ```bash
-docker build -t relay .
-docker run -d --name relay -p 8787:8787 \
-  -v "$PWD/deploy/relay.toml.example:/etc/relay/relay.toml:ro" \
-  -v "$PWD/scripts:/etc/relay/scripts:ro" \
-  --env-file /etc/relay/relay.env \
-  relay -config /etc/relay/relay.toml -listen 0.0.0.0:8787
+docker compose up -d --build
+docker compose ps          # chờ tới (healthy)
 ```
 
-Image là distroless (16.9MB, không shell, chạy uid 65532). `HEALTHCHECK` gọi
-`relay -healthcheck`, không cần curl trong image.
+`compose.yaml` dựng đúng thứ đã test: rootfs read-only, `cap_drop: ALL`,
+`no-new-privileges`, user `10001:10001`, `stop_grace_period: 45s` khớp với
+`shutdown_timeout` trong config, healthcheck gọi `-healthcheck` của chính relay
+nên image không cần curl.
+
+**Image có chủ ý không có CA bundle.** Base là `scratch` (9.98MB, không shell,
+không package manager), chỉ chứa binary tĩnh và script. Build không kèm CA vì
+relay được thiết kế để đặt sau một wrapper lo TLS: `deploy/relay.container.toml`
+trỏ upstream bằng `http://wrapper:8080`.
+
+Hệ quả: nếu bạn trỏ thẳng vào upstream `https://`, request sẽ fail với
+`x509: certificate signed by unknown authority`. Khi cần đi HTTPS trực tiếp,
+thêm vào stage build:
+
+```dockerfile
+RUN apk add --no-cache ca-certificates
+```
+
+rồi copy `ca-certificates.crt` sang `/etc/ssl/certs/` trong stage runtime (thêm
+khoảng 185KB), và dùng `deploy/relay.toml.example` thay cho config container.
+
+Chạy tay không qua compose:
+
+```bash
+docker build -t relay .
+docker run -d --name relay -p 127.0.0.1:8787:8787 \
+  -v "$PWD/deploy/relay.container.toml:/etc/relay/relay.toml:ro" \
+  -v "$PWD/scripts:/etc/relay/scripts:ro" \
+  --read-only --tmpfs /tmp:size=8m \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  relay
+```
+
+Mount `scripts/` lên `/etc/relay/scripts` chứ không mount riêng file config:
+`script_dir` được resolve tương đối theo thư mục chứa `relay.toml`, nên hai
+thứ đó phải giữ đúng vị trí tương đối như trong image.
 
 ### Graceful shutdown
 
