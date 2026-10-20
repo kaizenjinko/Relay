@@ -1,0 +1,158 @@
+# relay.toml — production reference
+#
+# Install alongside the scripts directory:
+#   /etc/relay/relay.toml
+#   /etc/relay/scripts/*.lua
+#
+# Every [[route]] is an independent reverse proxy: /<prefix>/* is forwarded to
+# <upstream>/* with this route's headers and Lua script applied.
+
+[server]
+listen = "127.0.0.1:8787"
+
+# Upper bound on concurrent connections. Set at or above the number of
+# simultaneously open SSE streams plus expected request concurrency.
+max_conns = 512
+
+# Per-request log line. Leave false in production and read the metrics endpoint
+# instead: one line per request is a lot of I/O at high rate.
+verbose = false
+
+# How long a client may take to send a request.
+read_timeout = "30s"
+
+# How long an in-flight request may keep running after SIGTERM. Must be
+# smaller than TimeoutStopSec in relay.service, or systemd kills the process
+# mid-drain and truncates live streams.
+shutdown_timeout = "30s"
+
+# "text" for a terminal, "json" for a log collector (one object per line).
+log_format = "json"
+
+# Prometheus text endpoint. Empty disables it.
+metrics_path = "/metrics"
+
+# Required as "Authorization: Bearer <token>" when set. Set this whenever the
+# listener is reachable from anything but localhost: the exposition reveals
+# route names and traffic volume.
+admin_token = ""
+
+# Relative to the config file's directory, so this works both from a checkout
+# and from a mounted /etc/relay regardless of the working directory.
+script_dir = "scripts"
+
+# ── OpenCode free tier ────────────────────────────────────────────────────
+# The gate is four things: the OpenCode User-Agent, an x-opencode-session
+# header, stream:true, and a tool named "read". Header half is declarative here;
+# the body half lives in scripts/opencode_free.lua.
+#
+# Models are addressed WITHOUT the "opencode/" prefix: "deepseek-v4.1-flash-free"
+# works, "opencode/deepseek-v4.1-flash-free" is rejected as unavailable.
+
+[[route]]
+name     = "opencode"
+prefix   = "/opencode"
+upstream = "https://opencode.ai/inference/openai/v1"
+script   = "opencode_free.lua"
+timeout  = "180s"
+
+  [route.headers.set]
+  User-Agent    = "opencode/1.19.3 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
+  Authorization = "Bearer public"
+
+  [route.headers.dynamic.x-opencode-session]
+  kind   = "hex"
+  prefix = "ses_"
+  bytes  = 13
+
+# ── CNB ───────────────────────────────────────────────────────────────────
+# Single-account form. Credentials come from /etc/relay/relay.env so they never
+# appear in this file, in `ps`, or in `systemctl show`.
+#
+# With more than one account, delete the two dynamic blocks below and use the
+# rotation form further down instead: rotation credentials win over static
+# headers, but a leftover env header is confusing to keep around.
+
+[[route]]
+name     = "cnb"
+prefix   = "/cnb"
+upstream = "https://cnb.cool"
+script   = "cnb.lua"
+timeout  = "180s"
+
+  [route.headers]
+  drop = ["accept-encoding"]
+
+  [route.headers.set]
+  Referer    = "https://cnb.cool/"
+  User-Agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+
+  [route.headers.dynamic.Cookie]
+  kind = "env"
+  name = "CNB_COOKIE"
+
+  [route.headers.dynamic.Csrftoken]
+  kind = "env"
+  name = "CNB_CSRF"
+
+  [route.params]
+  prefix = "cnb_"
+
+  # CNB streams SSE even for errors, so the response script must always see
+  # event payloads rather than a buffered body.
+  [route.response]
+  stream_sse = true
+
+# ── CNB with several accounts ─────────────────────────────────────────────
+# Replaces the single-account block above. The jar is a JSON file readable only
+# by the relay user:
+#
+#   {
+#     "accounts": [
+#       {"id": "a", "headers": {"Cookie": "CNBSESSION=...; csrfkey=...", "Csrftoken": "..."}},
+#       {"id": "b", "headers": {"Cookie": "...", "Csrftoken": "..."}}
+#     ]
+#   }
+#
+# CNB reports an expired session inside a 200 SSE stream, so the failure rule
+# must match the body, not the status code. The pattern below is the message
+# CNB uses for an expired login; extend it as new messages appear.
+#
+# [[route]]
+# name     = "cnb"
+# prefix   = "/cnb"
+# upstream = "https://cnb.cool"
+# script   = "cnb.lua"
+# timeout  = "180s"
+#
+#   [route.headers]
+#   drop = ["accept-encoding"]
+#
+#   [route.headers.set]
+#   Referer    = "https://cnb.cool/"
+#   User-Agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+#
+#   [[route.rotation.source]]
+#   kind = "cookie_jar"
+#   path = "/etc/relay/cnb-accounts.json"
+#
+#   [route.rotation]
+#   strategy       = "round_robin"
+#   max_attempts   = 2
+#   cooldown       = "60s"
+#   max_cooldown   = "30m"
+#   backoff_mult   = 2.0
+#   fail_threshold = 1
+#   reset_after    = "15m"
+#
+#   [[route.rotation.failure.rule]]
+#   name       = "auth-sse"
+#   status     = [200]
+#   body_regex = "登录已过期"
+#   retry      = true
+#
+#   [route.params]
+#   prefix = "cnb_"
+#
+#   [route.response]
+#   stream_sse = true

@@ -1,0 +1,139 @@
+# relay.toml — one process, many providers.
+#
+# Every [[route]] is an independent reverse proxy: incoming /<prefix>/* is
+# forwarded to <upstream>/* with the route's headers and Lua script applied.
+
+[server]
+listen           = ":8899"
+max_conns        = 512
+verbose          = false
+script_dir       = "scripts"
+shutdown_timeout = "30s"
+log_format       = "json"
+metrics_path     = "/metrics"
+
+# ── OpenCode free tier ────────────────────────────────────────────────────
+# The gate is four things: the OpenCode User-Agent, an x-opencode-session
+# header, stream:true, and a tool named "read". Headers are declarative here;
+# the body half is in scripts/opencode_free.lua.
+
+[[route]]
+name     = "opencode"
+prefix   = "/opencode"
+upstream = "https://opencode.ai/inference/openai/v1"
+script   = "opencode_free.lua"
+timeout  = "180s"
+
+  [route.headers.set]
+  User-Agent = "opencode/1.19.3 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
+  Authorization = "Bearer public"
+
+  [route.headers.dynamic.x-opencode-session]
+  kind   = "hex"
+  prefix = "ses_"
+  bytes  = 13
+
+# ── CNB ───────────────────────────────────────────────────────────────────
+# tool_choice must be stripped and tool names prefixed on the way up, then
+# unprefixed on the way down. Both directions live in scripts/cnb.lua.
+
+[[route]]
+name     = "cnb"
+prefix   = "/cnb"
+upstream = "https://cnb.cool"
+script   = "cnb.lua"
+timeout  = "180s"
+
+  [route.headers]
+  drop = ["accept-encoding"]
+
+  [route.headers.set]
+  Referer    = "https://cnb.cool/"
+  User-Agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+
+  # Credentials come from the environment, never from this file. Export
+  # CNB_COOKIE / CNB_CSRF before starting the relay; rotating an account means
+  # changing them and restarting.
+  [route.headers.dynamic.Cookie]
+  kind = "env"
+  name = "CNB_COOKIE"
+
+  [route.headers.dynamic.Csrftoken]
+  kind = "env"
+  name = "CNB_CSRF"
+
+  [route.params]
+  prefix = "cnb_"
+
+  # CNB streams SSE even for errors, so the response script must always see
+  # event payloads rather than a buffered body.
+  [route.response]
+  stream_sse = true
+
+# ── Generic OpenAI-compatible ─────────────────────────────────────────────
+# Pass-through with opt-in hooks. Every param is optional; with none of them
+# set the script returns nil in both directions and bytes are untouched.
+#
+#   default_temperature = 0.2    set temperature only when the client omitted it
+#   max_tokens_default  = 4096   set max_tokens only when absent
+#   map_length          = true   response: finish_reason "length" -> "content_filter"
+#
+# [[route]]
+# name     = "openai"
+# prefix   = "/openai"
+# upstream = "https://api.openai.com/v1"
+# script   = "openai.lua"
+# timeout  = "180s"
+#
+#   [route.headers.dynamic.Authorization]
+#   kind   = "env"
+#   name   = "OPENAI_API_KEY"
+#   prefix = "Bearer "
+#
+#   [route.params]
+#   default_temperature = 0.2
+#   max_tokens_default  = 4096
+
+# ── Anthropic upstream behind an OpenAI-shaped client ─────────────────────
+# The header is what Anthropic actually requires; anthropic_version in params
+# additionally writes the field into the body for upstreams that read it there.
+# See the header comment in anthropic_via_openai.lua for the exact conversion
+# table — it is a shim, not a full protocol translator.
+#
+# [[route]]
+# name     = "anthropic"
+# prefix   = "/anthropic"
+# upstream = "https://api.anthropic.com/v1"
+# script   = "anthropic_via_openai.lua"
+# timeout  = "180s"
+#
+#   [route.headers.set]
+#   anthropic-version = "2023-06-01"
+#
+#   [route.headers.dynamic.x-api-key]
+#   kind = "env"
+#   name = "ANTHROPIC_API_KEY"
+#
+#   [route.params]
+#   max_tokens_default = 4096
+
+# ── OpenRouter ────────────────────────────────────────────────────────────
+# Adds HTTP-Referer and X-Title for the OpenRouter app leaderboard. The script
+# returns body = req.body together with the headers, so the request body is
+# preserved (see FINDINGS.md F-3).
+#
+# [[route]]
+# name     = "openrouter"
+# prefix   = "/openrouter"
+# upstream = "https://openrouter.ai/api/v1"
+# script   = "openrouter.lua"
+# timeout  = "180s"
+#
+#   [route.headers.dynamic.Authorization]
+#   kind   = "env"
+#   name   = "OPENROUTER_API_KEY"
+#   prefix = "Bearer "
+#
+#   [route.params]
+#   referer = "https://example.com"
+#   title   = "relay"

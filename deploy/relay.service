@@ -1,0 +1,48 @@
+[Unit]
+Description=relay — multi-route LLM reverse proxy
+Documentation=https://github.com/baongo/relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=relay
+Group=relay
+
+ExecStart=/usr/local/bin/relay -config /etc/relay/relay.toml
+
+# Credentials come from this file, not from the unit, so `systemctl show`
+# never prints them.
+EnvironmentFile=-/etc/relay/relay.env
+
+# SIGTERM is handled by the relay: it stops accepting work, lets in-flight
+# SSE streams finish, then exits. TimeoutStopSec must be larger than
+# shutdown_timeout in relay.toml or systemd kills the process mid-drain.
+KillSignal=SIGTERM
+TimeoutStopSec=45s
+
+Restart=on-failure
+RestartSec=2s
+
+# ── hardening ───────────────────────────────────────────────────────────────
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+# The relay only needs to read its config and scripts.
+ReadOnlyPaths=/etc/relay
+
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

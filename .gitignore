@@ -1,0 +1,18 @@
+# Build output
+/relay
+/relay-*
+
+# Local credentials. Never commit a real relay.env.
+relay.env
+*.env
+!.env.example
+!relay.env.example
+
+# Credential jars (cookie_jar rotation sources)
+*-accounts.json
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
